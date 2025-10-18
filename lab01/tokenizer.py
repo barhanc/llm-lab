@@ -4,28 +4,28 @@ from math import inf
 from tqdm import trange
 
 
-def _merge(tokens: list[int], pair: tuple[int, int], new_tok: int) -> list[int]:
-    i, t = 0, []
-    while i < len(tokens):
-        if i < len(tokens) - 1 and (tokens[i], tokens[i + 1]) == pair:
-            t.append(new_tok)
-            i += 2
-        else:
-            t.append(tokens[i])
-            i += 1
-    return t
-
-
-def _get_pair_frequency(tokens: list[int]) -> Counter[tuple[int, int]]:
-    return Counter(pairwise(tokens))
-
-
 class Tokenizer:
     def __init__(self, characters: list[str]):
         self.characters = characters
         self._stoi = {ch: i for i, ch in enumerate(characters)}
         self._itos = {i: ch for i, ch in enumerate(characters)}
         self._merges: dict[tuple[int, int], int] = {}
+
+    @staticmethod
+    def _merge(tokens: list[int], pair: tuple[int, int], new_tok: int) -> list[int]:
+        i, t = 0, []
+        while i < len(tokens):
+            if i < len(tokens) - 1 and (tokens[i], tokens[i + 1]) == pair:
+                t.append(new_tok)
+                i += 2
+            else:
+                t.append(tokens[i])
+                i += 1
+        return t
+
+    @staticmethod
+    def _get_pair_frequency(tokens: list[int]) -> Counter[tuple[int, int]]:
+        return Counter(pairwise(tokens))
 
     def fit(self, text: str, vocab_size: int, verbose: bool = False) -> None:
         if vocab_size < len(self.characters):
@@ -37,12 +37,12 @@ class Tokenizer:
 
         for i in trange(vocab_size - len(self.characters), disable=not verbose):
             # --- Get the most frequent pair of tokens ---
-            freq = _get_pair_frequency(tokens)
+            freq = self._get_pair_frequency(tokens)
             pair = freq.most_common(n=1)[0][0]
             # --- Mint new token ---
             new_tok = len(self.characters) + i
             # --- Replace every occurence of `pair` with `new_tok` ---
-            tokens = _merge(tokens, pair, new_tok)
+            tokens = self._merge(tokens, pair, new_tok)
             # --- Update mappings ---
             self._merges[pair] = new_tok
             self._itos[new_tok] = self._itos[pair[0]] + self._itos[pair[1]]
@@ -54,11 +54,11 @@ class Tokenizer:
         tokens = [self._stoi[ch] for ch in text]
 
         while len(tokens) >= 2:
-            freq = _get_pair_frequency(tokens)
+            freq = self._get_pair_frequency(tokens)
             pair = min(freq, key=lambda p: self._merges.get(p, +inf))
             if pair not in self._merges:
                 break
-            tokens = _merge(tokens, pair, self._merges[pair])
+            tokens = self._merge(tokens, pair, self._merges[pair])
 
         return tokens
 
