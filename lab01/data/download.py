@@ -27,7 +27,7 @@ with open(fpath, "r", encoding="utf-8") as file:
 
 pattern = r"-{5,}.*?(\n\s*Adam Mickiewicz\s*\n)"
 replacement = r"\1"
-cleaned_text = re.sub(pattern, replacement, text, flags=re.DOTALL)
+clean_text = re.sub(pattern, replacement, text, flags=re.DOTALL)
 
 with open(fpath, "w", encoding="utf-8") as file:
-    file.write(cleaned_text)
+    file.write(clean_text)
