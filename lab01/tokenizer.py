@@ -27,6 +27,9 @@ class Tokenizer:
     def _get_pair_frequency(tokens: list[int]) -> Counter[tuple[int, int]]:
         return Counter(pairwise(tokens))
 
+    def get_vocab(self) -> dict[int, str]:
+        return self._itos.copy()
+
     def fit(self, text: str, vocab_size: int, verbose: bool = False) -> None:
         if vocab_size < len(self.characters):
             raise ValueError(f"{vocab_size=} must be >= than {len(self.characters)=}")
@@ -69,6 +72,9 @@ if __name__ == "__main__":
 
     characters = sorted(set(text))
     tokenizer = Tokenizer(characters)
-    tokenizer.fit(text, vocab_size=256, verbose=True)
+    tokenizer.fit(text, vocab_size=1024, verbose=True)
 
     assert text == tokenizer.decode(tokenizer.encode(text))
+
+    for k, v in tokenizer.get_vocab().items():
+        print(k, repr(v))
