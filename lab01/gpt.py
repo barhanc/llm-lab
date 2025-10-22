@@ -5,50 +5,55 @@ import torch.nn.functional as F
 from torch import Tensor
 
 
-class CausalMultiHeadSelfAttention(nn.Module):
+class MultiHeadSelfAttention(nn.Module):
     def __init__(self, block_size: int, dim_model: int, num_heads: int, dropout_p: float):
         super().__init__()
+        assert dim_model % num_heads == 0
 
-        self.dim_head: int = dim_model // num_heads
-        size = (num_heads, dim_model, self.dim_head)
-        scale = 2 / (dim_model + self.dim_head) ** 0.5
+        self.dim_model: int = dim_model
+        self.num_heads: int = num_heads
+        self.dropout_p: float = dropout_p
 
-        self.Wq = nn.Parameter(torch.normal(0.0, scale, size))
-        self.Wk = nn.Parameter(torch.normal(0.0, scale, size))
-        self.Wv = nn.Parameter(torch.normal(0.0, scale, size))
+        self.l_attn = nn.Linear(dim_model, 3 * dim_model, bias=False)
+        self.l_proj = nn.Linear(dim_model, dim_model)
+        self.d_attn = nn.Dropout(dropout_p)
+        self.d_proj = nn.Dropout(dropout_p)
 
-        self.linear = nn.Linear(dim_model, dim_model)
-        self.dropout1 = nn.Dropout(dropout_p)
-        self.dropout2 = nn.Dropout(dropout_p)
-        self.register_buffer("tril", torch.tril(torch.ones(block_size, block_size)) == 0)
+        self.flash: bool = hasattr(F, "scaled_dot_product_attention")
+        if not self.flash:
+            self.register_buffer(
+                "mask",
+                torch.tril(torch.ones(block_size, block_size)).view(1, 1, block_size, block_size),
+            )
 
     def forward(self, x: Tensor) -> Tensor:
-        B, T, _ = x.size()
-        x = x.reshape(B, 1, T, -1)
-        q, k, v = x @ self.Wq, x @ self.Wk, x @ self.Wv
+        B, T, C = x.size()
+        q, k, v = self.l_attn(x).split(self.dim_model, dim=2)
+        q = q.view(B, T, self.num_heads, C // self.num_heads).transpose(1, 2)
+        k = k.view(B, T, self.num_heads, C // self.num_heads).transpose(1, 2)
+        v = v.view(B, T, self.num_heads, C // self.num_heads).transpose(1, 2)
 
-        scores: Tensor = (q @ k.transpose(-2, -1)) / self.dim_head**0.5
-        scores = scores.masked_fill(self.tril[:T, :T], -torch.inf)  # type: ignore
-        scores = F.softmax(scores, dim=-1)
-        scores = self.dropout1(scores)
+        if self.flash:
+            dropout_p = self.dropout_p if self.training else 0.0
+            out = F.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=dropout_p, is_causal=True)
+        else:
+            dh = C // self.num_heads
+            scores = (q @ k.transpose(-2, -1)) / dh**0.5
+            scores = scores.masked_fill(self.mask[:, :, :T, :T] == 0, -torch.inf)  # type:ignore
+            scores = F.softmax(scores, dim=-1)
+            scores = self.d_attn(scores)
+            out = scores @ v
 
-        y = scores @ v
-        y = y.transpose(2, 1).reshape(B, T, -1)
-        y = self.linear(y)
-        y = self.dropout2(y)
+        out = out.transpose(1, 2).contiguous().view(B, T, C)
+        out = self.d_proj(self.l_proj(out))
 
-        return y
+        return out
 
 
-class Block(nn.Module):
-    def __init__(self, block_size: int, dim_model: int, num_heads: int, dropout_p: float):
+class FeedForward(nn.Module):
+    def __init__(self, dim_model: int, dropout_p: float) -> None:
         super().__init__()
-        self.dim_head: int = dim_model // num_heads
-
-        self.ln1 = nn.LayerNorm(dim_model)
-        self.ln2 = nn.LayerNorm(dim_model)
-        self.attn_layer = CausalMultiHeadSelfAttention(block_size, dim_model, num_heads, dropout_p)
-        self.ffwd_layer = nn.Sequential(
+        self.net = nn.Sequential(
             nn.Linear(dim_model, 4 * dim_model),
             nn.GELU(),
             nn.Linear(4 * dim_model, dim_model),
@@ -56,8 +61,20 @@ class Block(nn.Module):
         )
 
     def forward(self, x: Tensor) -> Tensor:
-        x = x + self.attn_layer(self.ln1(x))
-        x = x + self.ffwd_layer(self.ln2(x))
+        return self.net(x)
+
+
+class Block(nn.Module):
+    def __init__(self, block_size: int, dim_model: int, num_heads: int, dropout_p: float):
+        super().__init__()
+        self.ln_1 = nn.LayerNorm(dim_model)
+        self.attn = MultiHeadSelfAttention(block_size, dim_model, num_heads, dropout_p)
+        self.ln_2 = nn.LayerNorm(dim_model)
+        self.ffwd = FeedForward(dim_model, dropout_p)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = x + self.attn(self.ln_1(x))
+        x = x + self.ffwd(self.ln_2(x))
         return x
 
 
@@ -77,30 +94,32 @@ class GPTLanguageModel(nn.Module):
 
         self.tok_emb = nn.Embedding(vocab_size, dim_model)
         self.pos_emb = nn.Embedding(block_size, dim_model)
+        self.transformer = nn.Sequential(
+            *[Block(block_size, dim_model, num_heads, dropout_p) for _ in range(num_layers)]
+        )
 
-        blocks = [Block(block_size, dim_model, num_heads, dropout_p) for _ in range(num_layers)]
-        self.transformer = nn.Sequential(*blocks)
-        self.head = nn.Sequential(nn.LayerNorm(dim_model), nn.Linear(dim_model, vocab_size))
+        self.layer_norm = nn.LayerNorm(dim_model)
+        self.linear = nn.Linear(dim_model, vocab_size)
 
-        scale = (2 / dim_model) ** 0.5
-        self.apply(lambda m: self._init_weights(m, scale))
+        self.apply(lambda m: self._init_weights(m))
 
-    def _init_weights(self, m: nn.Module, scale: float):
+    def _init_weights(self, m: nn.Module):
         if isinstance(m, nn.Linear):
-            torch.nn.init.normal_(m.weight, mean=0.0, std=scale)
-            if m.bias is not None:
-                torch.nn.init.zeros_(m.bias)
+            torch.nn.init.normal_(m.weight, mean=0.0, std=0.02)
         elif isinstance(m, nn.Embedding):
-            torch.nn.init.normal_(m.weight, mean=0.0, std=scale)
+            torch.nn.init.normal_(m.weight, mean=0.0, std=0.02)
 
     def forward(self, ctx: Tensor) -> Tensor:
-        B, T = ctx.size()
+        _, T = ctx.size()
+
         tok_emb = self.tok_emb(ctx)
         pos_emb = self.pos_emb(torch.arange(T).to(ctx))
-        x = tok_emb + pos_emb
-        x = self.transformer(x)
-        x = self.head(x)
-        return x
+
+        out = tok_emb + pos_emb
+        out = self.transformer(out)
+        out = self.linear(self.layer_norm(out))
+
+        return out
 
     @torch.no_grad()
     def generate(self, ctx: Tensor, out_size: int | None = None):
@@ -124,7 +143,7 @@ class GPTLanguageModel(nn.Module):
 if __name__ == "__main__":
     from tqdm import trange
 
-    with open("data/tinyshakespeare.txt", encoding="utf-8") as file:
+    with open("data/mickiewicz.txt", encoding="utf-8") as file:
         text = file.read()
 
     chars = sorted(set(text))
@@ -197,10 +216,10 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
 
     for epoch in (pbar := trange(num_epochs)):
-        if epoch == 0 or (epoch + 1) % log_period == 0:
+        if epoch % log_period == 0 or epoch == num_epochs - 1:
             loss = eval(model, data_valid, num_evals, batch_size, device)
             loss_hist["valid"][epoch] = loss
-            print(f"epoch: {epoch+1:>5d}, valid loss: {loss}")
+            print(f"epoch: {epoch+1:>5d}, valid loss: {loss:.4f}")
 
             torch.save(
                 {
