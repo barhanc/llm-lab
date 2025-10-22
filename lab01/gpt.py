@@ -124,7 +124,7 @@ class GPTLanguageModel(nn.Module):
 if __name__ == "__main__":
     from tqdm import trange
 
-    with open("data/mickiewicz.txt", encoding="utf-8") as file:
+    with open("data/tinyshakespeare.txt", encoding="utf-8") as file:
         text = file.read()
 
     chars = sorted(set(text))
@@ -176,8 +176,8 @@ if __name__ == "__main__":
     block_size = 256
     log_period = 200
     num_epochs = 5_000
-    num_evals = 200
     num_layers = 6
+    num_evals = 200
     num_heads = 6
     dim_model = 384
     dropout_p = 0.2
