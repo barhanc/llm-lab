@@ -17,7 +17,7 @@ class CausalMultiHeadSelfAttention(nn.Module):
         self.Wk = nn.Parameter(torch.normal(0.0, scale, size))
         self.Wv = nn.Parameter(torch.normal(0.0, scale, size))
 
-        self.proj = nn.Linear(dim_model, dim_model)
+        self.linear = nn.Linear(dim_model, dim_model)
         self.dropout1 = nn.Dropout(dropout_p)
         self.dropout2 = nn.Dropout(dropout_p)
         self.register_buffer("tril", torch.tril(torch.ones(block_size, block_size)) == 0)
@@ -34,7 +34,7 @@ class CausalMultiHeadSelfAttention(nn.Module):
 
         y = scores @ v
         y = y.transpose(2, 1).reshape(B, T, -1)
-        y = self.proj(y)
+        y = self.linear(y)
         y = self.dropout2(y)
 
         return y
@@ -103,18 +103,22 @@ class GPTLanguageModel(nn.Module):
         return x
 
     @torch.no_grad()
-    def generate(self, ctx: Tensor):
+    def generate(self, ctx: Tensor, out_size: int | None = None):
         self.eval()
-
+        i = 0
         while True:
             ctx = ctx[-self.block_size :]
             logits = self(ctx.unsqueeze(0))
             logits = logits[0, -1, :]
 
-            token = torch.multinomial(F.softmax(logits), num_samples=1)
+            token = torch.multinomial(F.softmax(logits, dim=0), num_samples=1)
             yield token.item()
 
             ctx = torch.cat([ctx, token])
+
+            i += 1
+            if out_size and i == out_size:
+                break
 
 
 if __name__ == "__main__":
@@ -122,11 +126,9 @@ if __name__ == "__main__":
 
     with open("data/mickiewicz.txt", encoding="utf-8") as file:
         text = file.read()
-        print(text[:256])
 
     chars = sorted(set(text))
     vocab_size = len(chars)
-    print(vocab_size, chars)
 
     stoi = {ch: i for i, ch in enumerate(chars)}
     itos = {i: ch for i, ch in enumerate(chars)}
@@ -195,24 +197,25 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
 
     for epoch in (pbar := trange(num_epochs)):
-        if (epoch + 1) % log_period == 0:
+        if epoch == 0 or (epoch + 1) % log_period == 0:
             loss = eval(model, data_valid, num_evals, batch_size, device)
             loss_hist["valid"][epoch] = loss
             print(f"epoch: {epoch+1:>5d}, valid loss: {loss}")
 
             torch.save(
                 {
-                    "epoch": epoch + 1,
+                    "epoch": epoch,
                     "model_state": model.state_dict(),
                     "optim_state": optimizer.state_dict(),
                     "loss_hist": loss_hist,
                 },
-                f"checkpoints/chk_{epoch+1}.pt",
+                f"checkpoints/chk_{epoch}.pt",
             )
 
-            with open(f"checkpoints/out_{epoch+1}.txt") as f:
-                f.write("".join(itos[t] for t in model.generate(torch.tensor([0]))))
+            with open(f"checkpoints/out_{epoch}.txt", "w", encoding="utf-8") as f:
+                f.write("".join(itos[t] for t in model.generate(torch.tensor([0]).to(device), 1_000)))
 
+        model.train()
         src, tgt = get_batch(data_train, batch_size, block_size)
         src, tgt = src.to(device), tgt.to(device)
         B, T = src.size()
@@ -224,4 +227,4 @@ if __name__ == "__main__":
         optimizer.zero_grad()
 
         loss_hist["train"][epoch] = loss.item()
-        pbar.set_description(f"epoch: {epoch+1:>5d}, train loss: {loss.item():.4f}")
+        pbar.set_description(f"epoch: {epoch:>5d}, train loss: {loss.item():.4f}")
