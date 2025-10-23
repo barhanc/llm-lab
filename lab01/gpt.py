@@ -247,4 +247,4 @@ if __name__ == "__main__":
             )
 
             with open(f"checkpoints/out_{epoch}.txt", "w", encoding="utf-8") as f:
-                f.write("".join(itos[t] for t in model.generate(torch.tensor([0]).to(device), 1_000)))
+                f.write("".join(itos[t] for t in model.generate(torch.tensor([0]).to(device), 300)))
