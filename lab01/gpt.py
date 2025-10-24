@@ -167,20 +167,17 @@ def eval(model: GPTLanguageModel, data: Tensor, num_evals: int, batch_size: int,
 
 
 if __name__ == "__main__":
+    import pickle
+    from tokenizer import Tokenizer
     from tqdm import trange
 
-    with open("data/dataset.txt", encoding="utf-8") as file:
+    with open("data/sienkiewicz.txt", encoding="utf-8") as file:
         text = file.read()
 
-    chars = sorted(set(text))
-    vocab_size = len(chars)
+    with open("tokenizer.pkl", "rb") as file:
+        tokenizer: Tokenizer = pickle.load(file)
 
-    print(vocab_size, chars)
-
-    stoi = {ch: i for i, ch in enumerate(chars)}
-    itos = {i: ch for i, ch in enumerate(chars)}
-
-    data = torch.tensor([stoi[c] for c in text], dtype=torch.long)
+    data = torch.tensor(tokenizer.encode(text), dtype=torch.long)
     data_train = data[: int(0.9 * len(data))]
     data_valid = data[int(0.9 * len(data)) :]
 
@@ -200,7 +197,7 @@ if __name__ == "__main__":
     loss_hist = {"train": {}, "valid": {}}
 
     model = GPTLanguageModel(
-        vocab_size=vocab_size,
+        vocab_size=len(tokenizer.get_vocab()),
         block_size=block_size,
         num_layers=num_layers,
         dim_model=dim_model,
@@ -247,4 +244,4 @@ if __name__ == "__main__":
             with open(f"checkpoints/out_{epoch}.txt", "w", encoding="utf-8") as f:
                 ctx = torch.tensor([0], dtype=torch.long).to(device)
                 out_size = 300
-                f.write("".join(itos[tok] for tok in model.generate(ctx, out_size)))
+                f.write(tokenizer.decode(list(model.generate(ctx, out_size))))
