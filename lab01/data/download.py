@@ -1,9 +1,10 @@
 import os
+import re
 import requests
 
 
-url = "https://wolnelektury.pl/api/authors/henryk-sienkiewicz/books/"
-fpath = os.path.join(os.path.dirname(__file__), "sienkiewicz.txt")
+url = "https://wolnelektury.pl/api/authors/adam-mickiewicz/books/"
+fpath = os.path.join(os.path.dirname(__file__), "mickiewicz.txt")
 books = requests.get(url).json()
 
 with open(fpath, "w", encoding="utf-8") as file:
@@ -20,3 +21,13 @@ with open(fpath, "w", encoding="utf-8") as file:
 
         except Exception as e:
             print(f"Error: {e} while getting {book['title']}")
+
+with open(fpath, "r", encoding="utf-8") as file:
+    text = file.read()
+
+pattern = r"-{5,}.*?(\n\s*Adam Mickiewicz\s*\n)"
+replacement = r"\1"
+clean_text = re.sub(pattern, replacement, text, flags=re.DOTALL)
+
+with open(fpath, "w", encoding="utf-8") as file:
+    file.write(clean_text)
