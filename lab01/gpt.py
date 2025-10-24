@@ -18,7 +18,7 @@ class MultiHeadSelfAttention(nn.Module):
         self.dropout_p: float = dropout_p
 
         self.l_attn = nn.Linear(dim_model, 3 * dim_model, bias=False)
-        self.l_proj = nn.Linear(dim_model, dim_model)
+        self.l_proj = nn.Linear(dim_model, dim_model, bias=False)
         self.d_attn = nn.Dropout(dropout_p)
         self.d_proj = nn.Dropout(dropout_p)
 
@@ -169,11 +169,13 @@ def eval(model: GPTLanguageModel, data: Tensor, num_evals: int, batch_size: int,
 if __name__ == "__main__":
     from tqdm import trange
 
-    with open("data/sienkiewicz.txt", encoding="utf-8") as file:
+    with open("data/dataset.txt", encoding="utf-8") as file:
         text = file.read()
 
     chars = sorted(set(text))
     vocab_size = len(chars)
+
+    print(vocab_size, chars)
 
     stoi = {ch: i for i, ch in enumerate(chars)}
     itos = {i: ch for i, ch in enumerate(chars)}
@@ -182,18 +184,13 @@ if __name__ == "__main__":
     data_train = data[: int(0.9 * len(data))]
     data_valid = data[int(0.9 * len(data)) :]
 
-    if torch.cuda.is_available():
-        device = "cuda"
-    elif torch.mps.is_available():
-        device = "mps"
-    else:
-        device = "cpu"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device.upper()}")
 
     batch_size = 64
     block_size = 256
-    log_period = 200
-    num_epochs = 5_000
+    log_period = 500
+    num_epochs = 50_000
     num_layers = 6
     num_evals = 200
     num_heads = 6
@@ -223,6 +220,7 @@ if __name__ == "__main__":
 
         loss = F.cross_entropy(logits.reshape(B * T, -1), tgt.reshape(B * T))
         loss.backward()
+
         optimizer.step()
         optimizer.zero_grad()
 
@@ -234,17 +232,19 @@ if __name__ == "__main__":
         if epoch % log_period == 0 or epoch == num_epochs - 1:
             loss = eval(model, data_valid, num_evals, batch_size, device)
             loss_hist["valid"][epoch] = loss
-            print(f"epoch: {epoch+1:>5d}, valid loss: {loss:.4f}")
+            print(f"epoch: {epoch:>5d}, valid loss: {loss:.4f}")
 
             torch.save(
                 {
                     "epoch": epoch,
-                    "model_state": model.state_dict(),
-                    "optim_state": optimizer.state_dict(),
-                    "loss_hist": loss_hist,
+                    "model": model.state_dict(),
+                    "optim": optimizer.state_dict(),
+                    "loss": loss_hist,
                 },
                 f"checkpoints/chk_{epoch}.pt",
             )
 
             with open(f"checkpoints/out_{epoch}.txt", "w", encoding="utf-8") as f:
-                f.write("".join(itos[t] for t in model.generate(torch.tensor([0]).to(device), 300)))
+                ctx = torch.tensor([0], dtype=torch.long).to(device)
+                out_size = 300
+                f.write("".join(itos[tok] for tok in model.generate(ctx, out_size)))
