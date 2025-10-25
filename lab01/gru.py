@@ -60,3 +60,101 @@ def get_batch(data: Tensor, batch_size: int, block_size: int) -> tuple[Tensor, T
     src = torch.stack([data[i : i + block_size] for i in idx])
     tgt = torch.stack([data[i + 1 : i + 1 + block_size] for i in idx])
     return src, tgt
+
+
+@torch.no_grad()
+def eval(model: GRULanguageModel, data: Tensor, num_evals: int, batch_size: int, device: DeviceLikeType) -> float:
+    model.eval()
+    running_loss = 0.0
+    for _ in range(num_evals):
+        src, tgt = get_batch(data, batch_size, model.block_size)
+        src, tgt = src.to(device), tgt.to(device)
+
+        B, T = src.size()
+        logits: Tensor = model(src)
+        loss = F.cross_entropy(logits.reshape(B * T, -1), tgt.reshape(B * T))
+        running_loss += loss.item()
+
+    return running_loss / num_evals
+
+
+if __name__ == "__main__":
+    from tqdm import trange
+
+    with open("data/mickiewicz.txt", encoding="utf-8") as file:
+        text = file.read()
+
+    chars = sorted(set(text))
+    vocab_size = len(chars)
+
+    itos = {i: ch for i, ch in enumerate(chars)}
+    stoi = {ch: i for i, ch in enumerate(chars)}
+
+    data = torch.tensor([stoi[ch] for ch in text], dtype=torch.long)
+    data_train = data[: int(0.9 * len(data))]
+    data_valid = data[int(0.9 * len(data)) :]
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device.upper()}")
+
+    batch_size = 64
+    block_size = 256
+    log_period = 500
+    num_epochs = 5000
+    num_layers = 6
+    num_evals = 200
+    dim_model = 384
+    dropout_p = 0.2
+
+    loss_hist = {"train": {}, "valid": {}}
+
+    model = GRULanguageModel(
+        vocab_size=vocab_size,
+        block_size=block_size,
+        num_layers=num_layers,
+        dim_model=dim_model,
+        dropout_p=dropout_p,
+    ).to(device)
+    print(f"Model size: {sum(p.numel() for p in model.parameters()) / 1e6}M parameters")
+
+    exit(0)
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+
+    for epoch in (pbar := trange(num_epochs)):
+        model.train()
+        src, tgt = get_batch(data_train, batch_size, block_size)
+        src, tgt = src.to(device), tgt.to(device)
+        B, T = src.size()
+        logits: Tensor = model(src)
+
+        loss = F.cross_entropy(logits.reshape(B * T, -1), tgt.reshape(B * T))
+        loss.backward()
+
+        optimizer.step()
+        optimizer.zero_grad()
+
+        # --- Logging and evaluation ---
+
+        loss_hist["train"][epoch] = loss.item()
+        pbar.set_description(f"epoch: {epoch:>5d}, train loss: {loss.item():.4f}")
+
+        if epoch % log_period == 0 or epoch == num_epochs - 1:
+            loss = eval(model, data_valid, num_evals, batch_size, device)
+            loss_hist["valid"][epoch] = loss
+            print(f"epoch: {epoch:>5d}, valid loss: {loss:.4f}")
+
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "model": model.state_dict(),
+                    "optim": optimizer.state_dict(),
+                    "loss": loss_hist,
+                },
+                f"checkpoints/gru/chk_{epoch}.pt",
+            )
+
+            with open(f"checkpoints/gru/out_{epoch}.txt", "w", encoding="utf-8") as f:
+                ctx = torch.tensor([0], dtype=torch.long).to(device)
+                out_size = 512
+                f.write("".join(itos[tok] for tok in model.generate(ctx, out_size)))
