@@ -103,7 +103,7 @@ if __name__ == "__main__":
     num_epochs = 5000
     num_layers = 6
     num_evals = 200
-    dim_model = 384
+    dim_model = 512
     dropout_p = 0.2
 
     loss_hist = {"train": {}, "valid": {}}
@@ -116,8 +116,6 @@ if __name__ == "__main__":
         dropout_p=dropout_p,
     ).to(device)
     print(f"Model size: {sum(p.numel() for p in model.parameters()) / 1e6}M parameters")
-
-    exit(0)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
 
