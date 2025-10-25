@@ -188,7 +188,7 @@ if __name__ == "__main__":
     batch_size = 64
     block_size = 256
     log_period = 500
-    num_epochs = 5_000
+    num_epochs = 5000
     num_layers = 6
     num_evals = 200
     num_heads = 6
@@ -239,10 +239,10 @@ if __name__ == "__main__":
                     "optim": optimizer.state_dict(),
                     "loss": loss_hist,
                 },
-                f"checkpoints/chk_{epoch}.pt",
+                f"checkpoints/gpt/chk_{epoch}.pt",
             )
 
-            with open(f"checkpoints/out_{epoch}.txt", "w", encoding="utf-8") as f:
+            with open(f"checkpoints/gpt/out_{epoch}.txt", "w", encoding="utf-8") as f:
                 ctx = torch.tensor([0], dtype=torch.long).to(device)
                 out_size = 512
                 f.write("".join(itos[tok] for tok in model.generate(ctx, out_size)))
