@@ -8,6 +8,7 @@ from gru import GRULanguageModel
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("model", type=str, choices=("gru", "gpt"))
+    parser.add_argument("-p", "--prompt", type=str, default="\n")
     args = parser.parse_args()
     model_name = args.model
 
@@ -60,7 +61,7 @@ if __name__ == "__main__":
     else:
         raise ValueError
 
-    prompt = "\n"
+    prompt = args.prompt
     print(prompt, end="")
     prompt = [stoi[ch] for ch in prompt]
 
