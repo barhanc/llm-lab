@@ -1,0 +1,5 @@
+speakleash_data/
+checkpoints/
+*.txt
+m.model
+m.vocab
