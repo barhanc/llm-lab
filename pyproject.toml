@@ -11,9 +11,12 @@ dependencies = [
     "numpy>=2.3.4",
     "regex>=2025.11.3",
     "requests>=2.32.5",
+    "sacremoses>=0.1.1",
+    "scikit-learn>=1.7.2",
     "sentencepiece>=0.2.1",
     "speakleash>=0.3.51",
+    "tensorboard>=2.20.0",
     "torch>=2.9.0",
     "tqdm>=4.67.1",
-    "transformers>=4.57.1",
+    "transformers[torch]>=4.57.1",
 ]
