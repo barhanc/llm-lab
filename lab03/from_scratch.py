@@ -56,12 +56,12 @@ if __name__ == "__main__":
     CONFIG = {
         "block_size": 128,
         "d_model": 64,
-        "n_heads": 4,
-        "n_layers": 3,
+        "n_heads": 8,
+        "n_layers": 2,
         "dropout": 0.3,
         "batch_size": 32,
-        "lr": 3e-4,
-        "epochs": 100,
+        "lr": 5e-5,
+        "epochs": 50,
         "log_dir": "tce-slang/runs/custom_transformer_logs",
         "model_save_path": "tce-slang/best_custom_model.pth",
     }
@@ -123,7 +123,7 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(model.parameters(), lr=CONFIG["lr"])
     criterion = nn.CrossEntropyLoss()
 
-    best_val_loss, global_step = float("inf"), 0
+    best_val_loss = float("inf")
 
     for epoch in range(CONFIG["epochs"]):
         model.train()
@@ -141,9 +141,6 @@ if __name__ == "__main__":
             optimizer.zero_grad()
 
             train_loss_accum += loss.item()
-            writer.add_scalar("Train/Loss_Step", loss.item(), global_step)
-            pbar.set_postfix({"Loss": f"{loss.item():.4f}"})
-            global_step += 1
 
         model.eval()
         val_loss_accum, val_preds, val_targets = 0, [], []
