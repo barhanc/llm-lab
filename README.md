@@ -5,3 +5,5 @@ Problem statements can be found [here](https://github.com/apohllo/computational-
 1. [Language modeling](lab01)
 2. [Tokenization](lab02)
 3. [Fine-tuning](lab03)
+4. [Efficient attention](lab04)
+5. [LLM eval](lab05)
