@@ -7,3 +7,4 @@ Problem statements can be found [here](https://github.com/apohllo/computational-
 3. [Fine-tuning](lab03)
 4. [Efficient attention](lab04)
 5. [LLM eval](lab05)
+6. [Tiny Recursive Models](lab06)
