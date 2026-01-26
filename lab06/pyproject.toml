@@ -4,4 +4,10 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "nano-trm",
+    "nbconvert>=7.16.6",
+]
+
+[tool.uv.sources]
+nano-trm = { git = "https://github.com/allthingssecurity/trm_sudoku.git" }
