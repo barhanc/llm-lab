@@ -1,0 +1,34 @@
+[project]
+name = "llm-lab"
+version = "0.1.0"
+description = "Large Language Models laboratory assignments, benchmarks, and architectures"
+authors = [
+    { name = "Bartosz Hanc", email = "bartosz.hanc02@gmail.com" }
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "accelerate>=0.28",
+    "datasets>=2.18",
+    "jupyter>=1.0.0",
+    "matplotlib>=3.8",
+    "numpy>=1.26",
+    "ollama>=0.4",
+    "pandas>=2.2",
+    "peft>=0.10",
+    "tokenizers>=0.19",
+    "torch>=2.2",
+    "tqdm>=4.66",
+    "transformers>=4.40",
+]
+
+[tool.uv]
+package = false
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
